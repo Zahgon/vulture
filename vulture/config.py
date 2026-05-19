@@ -98,8 +98,6 @@ def _parse_args(args=None):
     # Sentinel value to distinguish between "False" and "no default given".
     missing = object()
 
-    def csv(exclude):
-        return exclude.split(",")
 
     usage = "%(prog)s [options] [PATH ...]"
     version = f"vulture {__version__}"

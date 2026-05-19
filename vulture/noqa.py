@@ -41,4 +41,4 @@ def parse_noqa(code):
 
 def ignore_line(noqa_lines, lineno, error_code):
     """Check if the reported line is annotated with "# noqa"."""
-    return lineno in noqa_lines[error_code] or lineno in noqa_lines["all"]
+    pass

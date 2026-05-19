@@ -40,16 +40,8 @@ ERROR_CODES = {
 }
 
 
-def _get_unused_items(defined_items, used_names):
-    unused_items = [
-        item for item in set(defined_items) if item.name not in used_names
-    ]
-    unused_items.sort(key=lambda item: item.name.lower())
-    return unused_items
 
 
-def _is_special_name(name):
-    return name.startswith("__") and name.endswith("__")
 
 
 def _match(name, patterns, case=True):
@@ -57,25 +49,10 @@ def _match(name, patterns, case=True):
     return any(func(name, pattern) for pattern in patterns)
 
 
-def _is_test_file(filename):
-    return _match(
-        filename.resolve(),
-        ["*/test/*", "*/tests/*", "*/test*.py", "*[-_]test.py"],
-        case=False,
-    )
 
 
-def _assigns_special_variable__all__(node):
-    assert isinstance(node, ast.Assign)
-    return isinstance(node.value, (ast.List, ast.Tuple)) and any(
-        target.id == "__all__"
-        for target in node.targets
-        if isinstance(target, ast.Name)
-    )
 
 
-def _ignore_class(filename, class_name):
-    return _is_test_file(filename) and "Test" in class_name
 
 
 def _ignore_import(filename, import_name):
@@ -84,21 +61,11 @@ def _ignore_import(filename, import_name):
     Ignore imports from __init__.py files since they're commonly used to
     collect objects from a package.
     """
-    return filename.name == "__init__.py" or import_name == "*"
+    pass
 
 
-def _ignore_function(filename, function_name):
-    return (
-        function_name in PYTEST_FUNCTION_NAMES
-        or function_name.startswith("test_")
-    ) and _is_test_file(filename)
 
 
-def _ignore_method(filename, method_name):
-    return _is_special_name(method_name) or (
-        (method_name in PYTEST_METHOD_NAMES or method_name.startswith("test_"))
-        and _is_test_file(filename)
-    )
 
 
 def _ignore_variable(filename, varname):
@@ -106,11 +73,7 @@ def _ignore_variable(filename, varname):
     Ignore _ (Python idiom), _x (pylint convention) and
     __x__ (special variable or method), but not __x.
     """
-    return (
-        varname in IGNORED_VARIABLE_NAMES
-        or (varname.startswith("_") and not varname.startswith("__"))
-        or _is_special_name(varname)
-    )
+    pass
 
 
 class Item:
@@ -146,10 +109,6 @@ class Item:
         self.message: str = message or f"unused {typ} '{name}'"
         self.confidence: int = confidence
 
-    @property
-    def size(self):
-        assert self.last_lineno >= self.first_lineno
-        return self.last_lineno - self.first_lineno + 1
 
     def get_report(self, add_size=False):
         if add_size:
@@ -174,8 +133,6 @@ class Item:
             f"({filename}:{self.first_lineno:d})"
         )
 
-    def _tuple(self):
-        return self.filename, self.first_lineno, self.name
 
     def __repr__(self):
         return repr(self.name)
@@ -195,8 +152,6 @@ class Vulture(ast.NodeVisitor):
     ):
         self.verbose = verbose
 
-        def get_list(typ):
-            return utils.LoggingList(typ, self.verbose)
 
         self.defined_attrs = get_list("attribute")
         self.defined_classes = get_list("class")
@@ -324,8 +279,6 @@ class Vulture(ast.NodeVisitor):
         def by_name(item):
             return str(item.filename).lower(), item.first_lineno
 
-        def by_size(item):
-            return item.size, *by_name(item)
 
         unused_code = (
             self.unused_attrs
@@ -364,33 +317,12 @@ class Vulture(ast.NodeVisitor):
             self.exit_code = ExitCode.DeadCode
         return self.exit_code
 
-    @property
-    def unused_classes(self):
-        return _get_unused_items(self.defined_classes, self.used_names)
 
-    @property
-    def unused_funcs(self):
-        return _get_unused_items(self.defined_funcs, self.used_names)
 
-    @property
-    def unused_imports(self):
-        return _get_unused_items(self.defined_imports, self.used_names)
 
-    @property
-    def unused_methods(self):
-        return _get_unused_items(self.defined_methods, self.used_names)
 
-    @property
-    def unused_props(self):
-        return _get_unused_items(self.defined_props, self.used_names)
 
-    @property
-    def unused_vars(self):
-        return _get_unused_items(self.defined_vars, self.used_names)
 
-    @property
-    def unused_attrs(self):
-        return _get_unused_items(self.defined_attrs, self.used_names)
 
     def _log(self, *args, file=None, force=False):
         if self.verbose or force:
@@ -407,79 +339,15 @@ class Vulture(ast.NodeVisitor):
         We delegate to this method instead of using visit_alias() to have
         access to line numbers and to filter imports from __future__.
         """
-        assert isinstance(node, (ast.Import, ast.ImportFrom))
-        for name_and_alias in node.names:
-            # Store only top-level module name ("os.path" -> "os").
-            # We can't easily detect when "os.path" is used.
-            name = name_and_alias.name.partition(".")[0]
-            alias = name_and_alias.asname
-            self._define(
-                self.defined_imports,
-                alias or name,
-                node,
-                confidence=90,
-                ignore=_ignore_import,
-            )
-            if alias is not None:
-                self.used_names.add(name_and_alias.name)
+        pass
 
-    def _define(
-        self,
-        collection,
-        name,
-        first_node,
-        last_node=None,
-        message="",
-        confidence=DEFAULT_CONFIDENCE,
-        ignore=None,
-    ):
-        def ignored(lineno):
-            return (
-                (ignore and ignore(self.filename, name))
-                or _match(name, self.ignore_names)
-                or noqa.ignore_line(self.noqa_lines, lineno, ERROR_CODES[typ])
-            )
 
-        last_node = last_node or first_node
-        typ = collection.typ
-        first_lineno = lines.get_first_line_number(first_node)
-
-        if ignored(first_lineno):
-            self._log(f'Ignoring {typ} "{name}"')
-        else:
-            collection.append(
-                Item(
-                    name,
-                    typ,
-                    self.filename,
-                    first_lineno,
-                    lines.get_last_line_number(last_node),
-                    message=message,
-                    confidence=confidence,
-                )
-            )
-
-    def _define_variable(self, name, node, confidence=DEFAULT_CONFIDENCE):
-        self._define(
-            self.defined_vars,
-            name,
-            node,
-            confidence=confidence,
-            ignore=_ignore_variable,
-        )
 
     def visit_arg(self, node):
         """Function argument"""
-        self._define_variable(node.arg, node, confidence=100)
+        pass
 
-    def visit_AsyncFunctionDef(self, node):
-        return self.visit_FunctionDef(node)
 
-    def visit_Attribute(self, node):
-        if isinstance(node.ctx, ast.Store):
-            self._define(self.defined_attrs, node.attr, node)
-        elif isinstance(node.ctx, ast.Load):
-            self.used_names.add(node.attr)
 
     def visit_BinOp(self, node):
         """
@@ -487,140 +355,21 @@ class Vulture(ast.NodeVisitor):
 
         "%(my_var)s" % locals()
         """
-        if (
-            utils.is_ast_string(node.left)
-            and isinstance(node.op, ast.Mod)
-            and self._is_locals_call(node.right)
-        ):
-            self.used_names |= set(re.findall(r"%\((\w+)\)", node.left.value))
+        pass
 
-    def visit_Call(self, node):
-        # Count getattr/hasattr(x, "some_attr", ...) as usage of some_attr.
-        if isinstance(node.func, ast.Name) and (
-            (node.func.id == "getattr" and 2 <= len(node.args) <= 3)
-            or (node.func.id == "hasattr" and len(node.args) == 2)
-        ):
-            attr_name_arg = node.args[1]
-            if utils.is_ast_string(attr_name_arg):
-                self.used_names.add(attr_name_arg.value)
 
-        # Parse variable names in new format strings:
-        # "{my_var}".format(**locals())
-        if (
-            isinstance(node.func, ast.Attribute)
-            and utils.is_ast_string(node.func.value)
-            and node.func.attr == "format"
-            and any(
-                kw.arg is None and self._is_locals_call(kw.value)
-                for kw in node.keywords
-            )
-        ):
-            self._handle_new_format_string(node.func.value.value)
-
-    def _handle_new_format_string(self, s):
-        def is_identifier(name):
-            return bool(re.match(r"[a-zA-Z_][a-zA-Z0-9_]*", name))
-
-        parser = string.Formatter()
-        try:
-            names = [name for _, name, _, _ in parser.parse(s) if name]
-        except ValueError:
-            # Invalid format string.
-            names = []
-
-        for field_name in names:
-            # Remove brackets and their contents: "a[0][b].c[d].e" -> "a.c.e",
-            # then split the resulting string: "a.b.c" -> ["a", "b", "c"]
-            vars = re.sub(r"\[\w*\]", "", field_name).split(".")
-            for var in vars:
-                if is_identifier(var):
-                    self.used_names.add(var)
 
     @staticmethod
     def _is_locals_call(node):
         """Return True if the node is `locals()`."""
-        return (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "locals"
-            and not node.args
-            and not node.keywords
-        )
+        pass
 
-    def visit_ClassDef(self, node):
-        for decorator in node.decorator_list:
-            if _match(
-                utils.get_decorator_name(decorator), self.ignore_decorators
-            ):
-                self._log(
-                    f'Ignoring class "{node.name}" (decorator whitelisted)'
-                )
-                break
-        else:
-            self._define(
-                self.defined_classes, node.name, node, ignore=_ignore_class
-            )
 
-    def visit_FunctionDef(self, node):
-        decorator_names = [
-            utils.get_decorator_name(decorator)
-            for decorator in node.decorator_list
-        ]
 
-        first_arg = node.args.args[0].arg if node.args.args else None
 
-        if "@property" in decorator_names:
-            typ = "property"
-        elif (
-            "@staticmethod" in decorator_names
-            or "@classmethod" in decorator_names
-            or first_arg == "self"
-        ):
-            typ = "method"
-        else:
-            typ = "function"
 
-        if any(
-            _match(name, self.ignore_decorators) for name in decorator_names
-        ):
-            self._log(f'Ignoring {typ} "{node.name}" (decorator whitelisted)')
-        elif typ == "property":
-            self._define(self.defined_props, node.name, node)
-        elif typ == "method":
-            self._define(
-                self.defined_methods, node.name, node, ignore=_ignore_method
-            )
-        else:
-            self._define(
-                self.defined_funcs, node.name, node, ignore=_ignore_function
-            )
 
-    def visit_Import(self, node):
-        self._add_aliases(node)
 
-    def visit_ImportFrom(self, node):
-        if node.module != "__future__":
-            self._add_aliases(node)
-
-    def visit_Name(self, node):
-        if (
-            isinstance(node.ctx, (ast.Load, ast.Del))
-            and node.id not in IGNORED_VARIABLE_NAMES
-        ):
-            self.used_names.add(node.id)
-        elif isinstance(node.ctx, (ast.Param, ast.Store)):
-            self._define_variable(node.id, node)
-
-    def visit_Assign(self, node):
-        if _assigns_special_variable__all__(node):
-            assert isinstance(node.value, (ast.List, ast.Tuple))
-            for elt in node.value.elts:
-                if utils.is_ast_string(elt):
-                    self.used_names.add(elt.value)
-
-    def visit_MatchClass(self, node):
-        for kwd_attr in node.kwd_attrs:
-            self.used_names.add(kwd_attr)
 
     def visit(self, node):
         # Visit children nodes first to allow recursive reachability analysis.

@@ -1,5 +1,3 @@
-def get_last_line_number(node):
-    return node.end_lineno
 
 
 def get_first_line_number(node):
@@ -12,7 +10,4 @@ def get_first_line_number(node):
     also don't need it's decorators), we return the lineno of the first
     decorator, if there are any.
     """
-    decorators = getattr(node, "decorator_list", [])
-    if decorators:
-        return decorators[0].lineno
-    return node.lineno
+    pass

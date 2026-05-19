@@ -53,8 +53,6 @@ def condition_is_always_true(condition):
     return _safe_eval(condition, False)
 
 
-def is_ast_string(node):
-    return isinstance(node, ast.Constant) and isinstance(node.value, str)
 
 
 def format_path(path):
@@ -65,18 +63,6 @@ def format_path(path):
         return path
 
 
-def get_decorator_name(decorator):
-    if isinstance(decorator, ast.Call):
-        decorator = decorator.func
-    try:
-        parts = []
-        while isinstance(decorator, ast.Attribute):
-            parts.append(decorator.attr)
-            decorator = decorator.value
-        parts.append(decorator.id)
-    except AttributeError:
-        parts = []
-    return "@" + ".".join(reversed(parts))
 
 
 def get_modules(paths):
